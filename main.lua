@@ -1,22 +1,33 @@
--- プレイヤー周囲360°ランダムテレポートシステム (クライアントサイド)
--- StarterGui以下にScreenGuiを作成し、その中にこのLocalScriptを配置してください。
-
+-- StarterGui/TeleportUIClient.lua
 local Players = game:GetService("Players")
-local Player = Players.LocalPlayer
-local Character = Player.Character or Player.CharacterAdded:Wait()
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
-
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 
--- UI構築関数
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+Player.CharacterAdded:Connect(function(newChar)
+	Character = newChar
+end)
+
+-- リモートイベント（サーバーへの通知用）
+local TeleportEvent
+if ReplicatedStorage:FindFirstChild("TeleportNotification") then
+	TeleportEvent = ReplicatedStorage:FindFirstChild("TeleportNotification")
+else
+	TeleportEvent = Instance.new("RemoteEvent")
+	TeleportEvent.Name = "TeleportNotification"
+	TeleportEvent.Parent = ReplicatedStorage
+end
+
+-- UI要素の作成関数
 local function CreateUI()
 	local ScreenGui = Instance.new("ScreenGui")
-	ScreenGui.Name = "TeleportUI"
+	ScreenGui.Name = "TeleportUIClient"
 	ScreenGui.ResetOnSpawn = false
 	ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
+	
 	-- メインフレーム
 	local MainFrame = Instance.new("Frame")
 	MainFrame.Name = "MainFrame"
@@ -24,15 +35,15 @@ local function CreateUI()
 	MainFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
 	MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 	MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-	MainFrame.BorderColor3 = Color3.fromRGB(150, 150, 150) -- 薄白の枠線
+	MainFrame.BorderColor3 = Color3.fromRGB(150, 150, 150)
 	MainFrame.BorderSizePixel = 2
 	MainFrame.ClipsDescendants = true
 	MainFrame.Parent = ScreenGui
-
+	
 	local UICorner = Instance.new("UICorner")
 	UICorner.CornerRadius = UDim.new(0, 12)
 	UICorner.Parent = MainFrame
-
+	
 	-- タイトルバー
 	local TitleBar = Instance.new("Frame")
 	TitleBar.Name = "TitleBar"
@@ -40,22 +51,23 @@ local function CreateUI()
 	TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	TitleBar.BorderSizePixel = 0
 	TitleBar.Parent = MainFrame
-
+	
 	local TitleBarCorner = Instance.new("UICorner")
 	TitleBarCorner.CornerRadius = UDim.new(0, 12, 0, 0)
 	TitleBarCorner.Parent = TitleBar
-
-	local TitleLabel = Instance.new("TextLabel")
-	TitleLabel.Text = "360° ランダムテレポート"
-	TitleLabel.Size = UDim2.new(1, -60, 1, 0)
-	TitleLabel.Position = UDim2.new(0, 10, 0, 0)
-	TitleLabel.BackgroundTransparency = 1
-	TitleLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
-	TitleLabel.Font = Enum.Font.Gotham
-	TitleLabel.TextSize = 14
-	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-	TitleLabel.Parent = TitleBar
-
+	
+	local TitleText = Instance.new("TextLabel")
+	TitleText.Text = "360° ランダムテレポート"
+	TitleText.Size = UDim2.new(1, -60, 1, 0)
+	TitleText.Position = UDim2.new(0, 10, 0, 0)
+	TitleText.BackgroundTransparency = 1
+	TitleText.TextColor3 = Color3.fromRGB(230, 230, 230)
+	TitleText.Font = Enum.Font.Gotham
+	TitleText.TextSize = 14
+	TitleText.TextXAlignment = Enum.TextXAlignment.Left
+	TitleText.Parent = TitleBar
+	
+	-- 最小化ボタン
 	local MinimizeButton = Instance.new("TextButton")
 	MinimizeButton.Name = "MinimizeButton"
 	MinimizeButton.Text = "-"
@@ -67,7 +79,8 @@ local function CreateUI()
 	MinimizeButton.Font = Enum.Font.Gotham
 	MinimizeButton.TextSize = 16
 	MinimizeButton.Parent = TitleBar
-
+	
+	-- 設定ボタン
 	local SettingsButton = Instance.new("TextButton")
 	SettingsButton.Name = "SettingsButton"
 	SettingsButton.Text = "⚙"
@@ -79,33 +92,33 @@ local function CreateUI()
 	SettingsButton.Font = Enum.Font.Gotham
 	SettingsButton.TextSize = 16
 	SettingsButton.Parent = TitleBar
-
-	-- コンテンツエリア (スクロール可能)
-	local ContentScrollingFrame = Instance.new("ScrollingFrame")
-	ContentScrollingFrame.Name = "Content"
-	ContentScrollingFrame.Size = UDim2.new(1, 0, 1, -30)
-	ContentScrollingFrame.Position = UDim2.new(0, 0, 0, 30)
-	ContentScrollingFrame.BackgroundTransparency = 1
-	ContentScrollingFrame.BorderSizePixel = 0
-	ContentScrollingFrame.ScrollBarThickness = 6
-	ContentScrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-	ContentScrollingFrame.CanvasSize = UDim2.new(0, 0, 0, 350)
-	ContentScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	ContentScrollingFrame.Parent = MainFrame
-
-	-- 半径スライダーセクション
+	
+	-- スクロール可能なコンテンツエリア
+	local Content = Instance.new("ScrollingFrame")
+	Content.Name = "Content"
+	Content.Size = UDim2.new(1, 0, 1, -30)
+	Content.Position = UDim2.new(0, 0, 0, 30)
+	Content.BackgroundTransparency = 1
+	Content.BorderSizePixel = 0
+	Content.ScrollBarThickness = 6
+	Content.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+	Content.CanvasSize = UDim2.new(0, 0, 0, 350)
+	Content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	Content.Parent = MainFrame
+	
+	-- 半径設定セクション
 	local RadiusSection = Instance.new("Frame")
 	RadiusSection.Name = "RadiusSection"
 	RadiusSection.Size = UDim2.new(1, -20, 0, 80)
 	RadiusSection.Position = UDim2.new(0, 10, 0, 10)
 	RadiusSection.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 	RadiusSection.BorderSizePixel = 0
-	RadiusSection.Parent = ContentScrollingFrame
-
+	RadiusSection.Parent = Content
+	
 	local RadiusSectionCorner = Instance.new("UICorner")
 	RadiusSectionCorner.CornerRadius = UDim.new(0, 8)
 	RadiusSectionCorner.Parent = RadiusSection
-
+	
 	local RadiusLabel = Instance.new("TextLabel")
 	RadiusLabel.Text = "テレポート半径 (5-10 スタッド)"
 	RadiusLabel.Size = UDim2.new(1, -20, 0, 20)
@@ -116,44 +129,46 @@ local function CreateUI()
 	RadiusLabel.TextSize = 12
 	RadiusLabel.TextXAlignment = Enum.TextXAlignment.Left
 	RadiusLabel.Parent = RadiusSection
-
-	local RadiusSliderFrame = Instance.new("Frame")
-	RadiusSliderFrame.Name = "RadiusSlider"
-	RadiusSliderFrame.Size = UDim2.new(1, -20, 0, 20)
-	RadiusSliderFrame.Position = UDim2.new(0, 10, 0, 30)
-	RadiusSliderFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	RadiusSliderFrame.BorderSizePixel = 0
-	RadiusSliderFrame.Parent = RadiusSection
-
-	local RadiusSliderCorner = Instance.new("UICorner")
-	RadiusSliderCorner.CornerRadius = UDim.new(0, 10)
-	RadiusSliderCorner.Parent = RadiusSliderFrame
-
-	local RadiusFill = Instance.new("Frame")
-	RadiusFill.Name = "Fill"
-	RadiusFill.Size = UDim2.new(0.5, 0, 1, 0)
-	RadiusFill.BackgroundColor3 = Color3.fromRGB(80, 120, 200)
-	RadiusFill.BorderSizePixel = 0
-	RadiusFill.Parent = RadiusSliderFrame
-
-	local RadiusFillCorner = Instance.new("UICorner")
-	RadiusFillCorner.CornerRadius = UDim.new(0, 10)
-	RadiusFillCorner.Parent = RadiusFill
-
-	local RadiusButton = Instance.new("TextButton")
-	RadiusButton.Name = "Button"
-	RadiusButton.Size = UDim2.new(0, 20, 0, 20)
-	RadiusButton.Position = UDim2.new(0.5, -10, 0, 0)
-	RadiusButton.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
-	RadiusButton.BorderSizePixel = 2
-	RadiusButton.BorderColor3 = Color3.fromRGB(200, 200, 200)
-	RadiusButton.Text = ""
-	RadiusButton.Parent = RadiusSliderFrame
-
-	local RadiusButtonCorner = Instance.new("UICorner")
-	RadiusButtonCorner.CornerRadius = UDim.new(0, 10)
-	RadiusButtonCorner.Parent = RadiusButton
-
+	
+	-- 半径スライダー
+	local RadiusSlider = Instance.new("Frame")
+	RadiusSlider.Name = "RadiusSlider"
+	RadiusSlider.Size = UDim2.new(1, -20, 0, 20)
+	RadiusSlider.Position = UDim2.new(0, 10, 0, 30)
+	RadiusSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	RadiusSlider.BorderSizePixel = 0
+	RadiusSlider.Parent = RadiusSection
+	
+	local SliderCorner = Instance.new("UICorner")
+	SliderCorner.CornerRadius = UDim.new(0, 10)
+	SliderCorner.Parent = RadiusSlider
+	
+	local Fill = Instance.new("Frame")
+	Fill.Name = "Fill"
+	Fill.Size = UDim2.new(0.5, 0, 1, 0)
+	Fill.BackgroundColor3 = Color3.fromRGB(80, 120, 200)
+	Fill.BorderSizePixel = 0
+	Fill.Parent = RadiusSlider
+	
+	local FillCorner = Instance.new("UICorner")
+	FillCorner.CornerRadius = UDim.new(0, 10)
+	FillCorner.Parent = Fill
+	
+	local SliderButton = Instance.new("TextButton")
+	SliderButton.Name = "Button"
+	SliderButton.Size = UDim2.new(0, 20, 0, 20)
+	SliderButton.Position = UDim2.new(0.5, -10, 0, 0)
+	SliderButton.BackgroundColor3 = Color3.fromRGB(230, 230, 230)
+	SliderButton.BorderSizePixel = 2
+	SliderButton.BorderColor3 = Color3.fromRGB(200, 200, 200)
+	SliderButton.Text = ""
+	SliderButton.Parent = RadiusSlider
+	
+	local ButtonCorner = Instance.new("UICorner")
+	ButtonCorner.CornerRadius = UDim.new(0, 10)
+	ButtonCorner.Parent = SliderButton
+	
+	-- 半径値表示
 	local RadiusValue = Instance.new("TextLabel")
 	RadiusValue.Name = "RadiusValue"
 	RadiusValue.Text = "7.5"
@@ -165,18 +180,18 @@ local function CreateUI()
 	RadiusValue.TextSize = 14
 	RadiusValue.TextXAlignment = Enum.TextXAlignment.Right
 	RadiusValue.Parent = RadiusSection
-
-	local RadiusUnit = Instance.new("TextLabel")
-	RadiusUnit.Text = "スタッド"
-	RadiusUnit.Size = UDim2.new(0, 40, 0, 20)
-	RadiusUnit.Position = UDim2.new(1, -15, 0, 55)
-	RadiusUnit.BackgroundTransparency = 1
-	RadiusUnit.TextColor3 = Color3.fromRGB(150, 150, 150)
-	RadiusUnit.Font = Enum.Font.Gotham
-	RadiusUnit.TextSize = 12
-	RadiusUnit.TextXAlignment = Enum.TextXAlignment.Left
-	RadiusUnit.Parent = RadiusSection
-
+	
+	local StudsLabel = Instance.new("TextLabel")
+	StudsLabel.Text = "スタッド"
+	StudsLabel.Size = UDim2.new(0, 40, 0, 20)
+	StudsLabel.Position = UDim2.new(1, -15, 0, 55)
+	StudsLabel.BackgroundTransparency = 1
+	StudsLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+	StudsLabel.Font = Enum.Font.Gotham
+	StudsLabel.TextSize = 12
+	StudsLabel.TextXAlignment = Enum.TextXAlignment.Left
+	StudsLabel.Parent = RadiusSection
+	
 	-- テレポートボタン
 	local TeleportButton = Instance.new("TextButton")
 	TeleportButton.Name = "TeleportButton"
@@ -188,12 +203,12 @@ local function CreateUI()
 	TeleportButton.TextColor3 = Color3.fromRGB(230, 230, 230)
 	TeleportButton.Font = Enum.Font.Gotham
 	TeleportButton.TextSize = 18
-	TeleportButton.Parent = ContentScrollingFrame
-
+	TeleportButton.Parent = Content
+	
 	local TeleportButtonCorner = Instance.new("UICorner")
 	TeleportButtonCorner.CornerRadius = UDim.new(0, 8)
 	TeleportButtonCorner.Parent = TeleportButton
-
+	
 	-- 説明テキスト
 	local Description = Instance.new("TextLabel")
 	Description.Text = "プレイヤーの周囲を円形にランダムテレポートします。"
@@ -205,13 +220,13 @@ local function CreateUI()
 	Description.Font = Enum.Font.Gotham
 	Description.TextSize = 12
 	Description.TextWrapped = true
-	Description.Parent = ContentScrollingFrame
-
+	Description.Parent = Content
+	
 	local DescriptionCorner = Instance.new("UICorner")
 	DescriptionCorner.CornerRadius = UDim.new(0, 8)
 	DescriptionCorner.Parent = Description
-
-	-- 設定フレーム (最初は非表示)
+	
+	-- 設定フレーム
 	local SettingsFrame = Instance.new("Frame")
 	SettingsFrame.Name = "SettingsFrame"
 	SettingsFrame.Visible = false
@@ -222,11 +237,11 @@ local function CreateUI()
 	SettingsFrame.BorderColor3 = Color3.fromRGB(150, 150, 150)
 	SettingsFrame.BorderSizePixel = 2
 	SettingsFrame.Parent = ScreenGui
-
-	local SettingsFrameCorner = Instance.new("UICorner")
-	SettingsFrameCorner.CornerRadius = UDim.new(0, 12)
-	SettingsFrameCorner.Parent = SettingsFrame
-
+	
+	local SettingsCorner = Instance.new("UICorner")
+	SettingsCorner.CornerRadius = UDim.new(0, 12)
+	SettingsCorner.Parent = SettingsFrame
+	
 	-- 設定ヘッダー
 	local SettingsHeader = Instance.new("Frame")
 	SettingsHeader.Name = "SettingsHeader"
@@ -234,11 +249,11 @@ local function CreateUI()
 	SettingsHeader.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 	SettingsHeader.BorderSizePixel = 0
 	SettingsHeader.Parent = SettingsFrame
-
-	local SettingsHeaderCorner = Instance.new("UICorner")
-	SettingsHeaderCorner.CornerRadius = UDim.new(0, 12, 0, 0)
-	SettingsHeaderCorner.Parent = SettingsHeader
-
+	
+	local HeaderCorner = Instance.new("UICorner")
+	HeaderCorner.CornerRadius = UDim.new(0, 12, 0, 0)
+	HeaderCorner.Parent = SettingsHeader
+	
 	local SettingsTitle = Instance.new("TextLabel")
 	SettingsTitle.Text = "設定"
 	SettingsTitle.Size = UDim2.new(1, -40, 1, 0)
@@ -249,7 +264,7 @@ local function CreateUI()
 	SettingsTitle.TextSize = 18
 	SettingsTitle.TextXAlignment = Enum.TextXAlignment.Left
 	SettingsTitle.Parent = SettingsHeader
-
+	
 	local CloseSettings = Instance.new("TextButton")
 	CloseSettings.Name = "CloseSettings"
 	CloseSettings.Text = "×"
@@ -261,8 +276,8 @@ local function CreateUI()
 	CloseSettings.Font = Enum.Font.Gotham
 	CloseSettings.TextSize = 20
 	CloseSettings.Parent = SettingsHeader
-
-	-- 設定コンテンツ (スクロール可能)
+	
+	-- 設定コンテンツ
 	local SettingsContent = Instance.new("ScrollingFrame")
 	SettingsContent.Name = "SettingsContent"
 	SettingsContent.Size = UDim2.new(1, 0, 1, -40)
@@ -273,8 +288,8 @@ local function CreateUI()
 	SettingsContent.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
 	SettingsContent.CanvasSize = UDim2.new(0, 0, 0, 600)
 	SettingsContent.Parent = SettingsFrame
-
-	-- 遅延時間スライダーセクション
+	
+	-- 遅延時間セクション
 	local DelaySection = Instance.new("Frame")
 	DelaySection.Name = "DelaySection"
 	DelaySection.Size = UDim2.new(1, -20, 0, 100)
@@ -282,11 +297,11 @@ local function CreateUI()
 	DelaySection.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 	DelaySection.BorderSizePixel = 0
 	DelaySection.Parent = SettingsContent
-
-	local DelaySectionCorner = Instance.new("UICorner")
-	DelaySectionCorner.CornerRadius = UDim.new(0, 8)
-	DelaySectionCorner.Parent = DelaySection
-
+	
+	local DelayCorner = Instance.new("UICorner")
+	DelayCorner.CornerRadius = UDim.new(0, 8)
+	DelayCorner.Parent = DelaySection
+	
 	local DelayLabel = Instance.new("TextLabel")
 	DelayLabel.Text = "テレポート遅延時間 (0.1-1秒)"
 	DelayLabel.Size = UDim2.new(1, -20, 0, 20)
@@ -297,30 +312,31 @@ local function CreateUI()
 	DelayLabel.TextSize = 12
 	DelayLabel.TextXAlignment = Enum.TextXAlignment.Left
 	DelayLabel.Parent = DelaySection
-
-	local DelaySliderFrame = Instance.new("Frame")
-	DelaySliderFrame.Name = "DelaySlider"
-	DelaySliderFrame.Size = UDim2.new(1, -20, 0, 20)
-	DelaySliderFrame.Position = UDim2.new(0, 10, 0, 30)
-	DelaySliderFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	DelaySliderFrame.BorderSizePixel = 0
-	DelaySliderFrame.Parent = DelaySection
-
+	
+	-- 遅延スライダー
+	local DelaySlider = Instance.new("Frame")
+	DelaySlider.Name = "DelaySlider"
+	DelaySlider.Size = UDim2.new(1, -20, 0, 20)
+	DelaySlider.Position = UDim2.new(0, 10, 0, 30)
+	DelaySlider.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	DelaySlider.BorderSizePixel = 0
+	DelaySlider.Parent = DelaySection
+	
 	local DelaySliderCorner = Instance.new("UICorner")
 	DelaySliderCorner.CornerRadius = UDim.new(0, 10)
-	DelaySliderCorner.Parent = DelaySliderFrame
-
+	DelaySliderCorner.Parent = DelaySlider
+	
 	local DelayFill = Instance.new("Frame")
 	DelayFill.Name = "Fill"
 	DelayFill.Size = UDim2.new(0.5, 0, 1, 0)
 	DelayFill.BackgroundColor3 = Color3.fromRGB(200, 120, 80)
 	DelayFill.BorderSizePixel = 0
-	DelayFill.Parent = DelaySliderFrame
-
+	DelayFill.Parent = DelaySlider
+	
 	local DelayFillCorner = Instance.new("UICorner")
 	DelayFillCorner.CornerRadius = UDim.new(0, 10)
 	DelayFillCorner.Parent = DelayFill
-
+	
 	local DelayButton = Instance.new("TextButton")
 	DelayButton.Name = "Button"
 	DelayButton.Size = UDim2.new(0, 20, 0, 20)
@@ -329,12 +345,13 @@ local function CreateUI()
 	DelayButton.BorderSizePixel = 2
 	DelayButton.BorderColor3 = Color3.fromRGB(200, 200, 200)
 	DelayButton.Text = ""
-	DelayButton.Parent = DelaySliderFrame
-
+	DelayButton.Parent = DelaySlider
+	
 	local DelayButtonCorner = Instance.new("UICorner")
 	DelayButtonCorner.CornerRadius = UDim.new(0, 10)
 	DelayButtonCorner.Parent = DelayButton
-
+	
+	-- 遅延値表示
 	local DelayValue = Instance.new("TextLabel")
 	DelayValue.Name = "DelayValue"
 	DelayValue.Text = "0.5"
@@ -346,19 +363,19 @@ local function CreateUI()
 	DelayValue.TextSize = 14
 	DelayValue.TextXAlignment = Enum.TextXAlignment.Right
 	DelayValue.Parent = DelaySection
-
-	local DelayUnit = Instance.new("TextLabel")
-	DelayUnit.Text = "秒"
-	DelayUnit.Size = UDim2.new(0, 20, 0, 20)
-	DelayUnit.Position = UDim2.new(1, -15, 0, 55)
-	DelayUnit.BackgroundTransparency = 1
-	DelayUnit.TextColor3 = Color3.fromRGB(150, 150, 150)
-	DelayUnit.Font = Enum.Font.Gotham
-	DelayUnit.TextSize = 12
-	DelayUnit.TextXAlignment = Enum.TextXAlignment.Left
-	DelayUnit.Parent = DelaySection
-
-	-- カスタム遅延時間入力セクション
+	
+	local SecondsLabel = Instance.new("TextLabel")
+	SecondsLabel.Text = "秒"
+	SecondsLabel.Size = UDim2.new(0, 20, 0, 20)
+	SecondsLabel.Position = UDim2.new(1, -15, 0, 55)
+	SecondsLabel.BackgroundTransparency = 1
+	SecondsLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+	SecondsLabel.Font = Enum.Font.Gotham
+	SecondsLabel.TextSize = 12
+	SecondsLabel.TextXAlignment = Enum.TextXAlignment.Left
+	SecondsLabel.Parent = DelaySection
+	
+	-- カスタム遅延入力
 	local CustomDelay = Instance.new("Frame")
 	CustomDelay.Name = "CustomDelay"
 	CustomDelay.Size = UDim2.new(1, -20, 0, 120)
@@ -366,11 +383,11 @@ local function CreateUI()
 	CustomDelay.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 	CustomDelay.BorderSizePixel = 0
 	CustomDelay.Parent = SettingsContent
-
+	
 	local CustomDelayCorner = Instance.new("UICorner")
 	CustomDelayCorner.CornerRadius = UDim.new(0, 8)
 	CustomDelayCorner.Parent = CustomDelay
-
+	
 	local CustomDelayLabel = Instance.new("TextLabel")
 	CustomDelayLabel.Text = "カスタム遅延時間 (0.01-10秒)"
 	CustomDelayLabel.Size = UDim2.new(1, -20, 0, 20)
@@ -381,18 +398,18 @@ local function CreateUI()
 	CustomDelayLabel.TextSize = 12
 	CustomDelayLabel.TextXAlignment = Enum.TextXAlignment.Left
 	CustomDelayLabel.Parent = CustomDelay
-
-	local CustomDelayInstruction = Instance.new("TextLabel")
-	CustomDelayInstruction.Text = "直接数値を入力してください:"
-	CustomDelayInstruction.Size = UDim2.new(1, -20, 0, 20)
-	CustomDelayInstruction.Position = UDim2.new(0, 10, 0, 30)
-	CustomDelayInstruction.BackgroundTransparency = 1
-	CustomDelayInstruction.TextColor3 = Color3.fromRGB(180, 180, 180)
-	CustomDelayInstruction.Font = Enum.Font.Gotham
-	CustomDelayInstruction.TextSize = 11
-	CustomDelayInstruction.TextXAlignment = Enum.TextXAlignment.Left
-	CustomDelayInstruction.Parent = CustomDelay
-
+	
+	local CustomDelayDesc = Instance.new("TextLabel")
+	CustomDelayDesc.Text = "直接数値を入力してください:"
+	CustomDelayDesc.Size = UDim2.new(1, -20, 0, 20)
+	CustomDelayDesc.Position = UDim2.new(0, 10, 0, 30)
+	CustomDelayDesc.BackgroundTransparency = 1
+	CustomDelayDesc.TextColor3 = Color3.fromRGB(180, 180, 180)
+	CustomDelayDesc.Font = Enum.Font.Gotham
+	CustomDelayDesc.TextSize = 11
+	CustomDelayDesc.TextXAlignment = Enum.TextXAlignment.Left
+	CustomDelayDesc.Parent = CustomDelay
+	
 	local InputBox = Instance.new("TextBox")
 	InputBox.Name = "InputBox"
 	InputBox.Size = UDim2.new(1, -20, 0, 30)
@@ -405,11 +422,11 @@ local function CreateUI()
 	InputBox.PlaceholderText = "例: 0.05 または 2.5"
 	InputBox.ClearTextOnFocus = false
 	InputBox.Parent = CustomDelay
-
-	local InputBoxCorner = Instance.new("UICorner")
-	InputBoxCorner.CornerRadius = UDim.new(0, 6)
-	InputBoxCorner.Parent = InputBox
-
+	
+	local InputCorner = Instance.new("UICorner")
+	InputCorner.CornerRadius = UDim.new(0, 6)
+	InputCorner.Parent = InputBox
+	
 	local ApplyButton = Instance.new("TextButton")
 	ApplyButton.Name = "ApplyButton"
 	ApplyButton.Text = "適用"
@@ -421,128 +438,45 @@ local function CreateUI()
 	ApplyButton.Font = Enum.Font.Gotham
 	ApplyButton.TextSize = 14
 	ApplyButton.Parent = CustomDelay
-
-	local ApplyButtonCorner = Instance.new("UICorner")
-	ApplyButtonCorner.CornerRadius = UDim.new(0, 6)
-	ApplyButtonCorner.Parent = ApplyButton
-
-	-- 説明セクション
-	local Instructions = Instance.new("Frame")
-	Instructions.Name = "Instructions"
-	Instructions.Size = UDim2.new(1, -20, 0, 180)
-	Instructions.Position = UDim2.new(0, 10, 0, 250)
-	Instructions.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	Instructions.BorderSizePixel = 0
-	Instructions.Parent = SettingsContent
-
-	local InstructionsCorner = Instance.new("UICorner")
-	InstructionsCorner.CornerRadius = UDim.new(0, 8)
-	InstructionsCorner.Parent = Instructions
-
-	local InstructionsTitle = Instance.new("TextLabel")
-	InstructionsTitle.Text = "使い方説明"
-	InstructionsTitle.Size = UDim2.new(1, -20, 0, 30)
-	InstructionsTitle.Position = UDim2.new(0, 10, 0, 5)
-	InstructionsTitle.BackgroundTransparency = 1
-	InstructionsTitle.TextColor3 = Color3.fromRGB(230, 230, 230)
-	InstructionsTitle.Font = Enum.Font.GothamBold
-	InstructionsTitle.TextSize = 16
-	InstructionsTitle.TextXAlignment = Enum.TextXAlignment.Left
-	InstructionsTitle.Parent = Instructions
-
-	local Instruction1 = Instance.new("TextLabel")
-	Instruction1.Text = "1. 半径スライダーでテレポート範囲を設定 (5-10スタッド)"
-	Instruction1.Size = UDim2.new(1, -20, 0, 20)
-	Instruction1.Position = UDim2.new(0, 10, 0, 40)
-	Instruction1.BackgroundTransparency = 1
-	Instruction1.TextColor3 = Color3.fromRGB(200, 200, 200)
-	Instruction1.Font = Enum.Font.Gotham
-	Instruction1.TextSize = 12
-	Instruction1.TextXAlignment = Enum.TextXAlignment.Left
-	Instruction1.TextWrapped = true
-	Instruction1.Parent = Instructions
-
-	local Instruction2 = Instance.new("TextLabel")
-	Instruction2.Text = "2. 設定で遅延時間を調整 (0.1-1秒)"
-	Instruction2.Size = UDim2.new(1, -20, 0, 20)
-	Instruction2.Position = UDim2.new(0, 10, 0, 65)
-	Instruction2.BackgroundTransparency = 1
-	Instruction2.TextColor3 = Color3.fromRGB(200, 200, 200)
-	Instruction2.Font = Enum.Font.Gotham
-	Instruction2.TextSize = 12
-	Instruction2.TextXAlignment = Enum.TextXAlignment.Left
-	Instruction2.TextWrapped = true
-	Instruction2.Parent = Instructions
-
-	local Instruction3 = Instance.new("TextLabel")
-	Instruction3.Text = "3. カスタム遅延で0.01-10秒の任意の値を設定可能"
-	Instruction3.Size = UDim2.new(1, -20, 0, 20)
-	Instruction3.Position = UDim2.new(0, 10, 0, 90)
-	Instruction3.BackgroundTransparency = 1
-	Instruction3.TextColor3 = Color3.fromRGB(200, 200, 200)
-	Instruction3.Font = Enum.Font.Gotham
-	Instruction3.TextSize = 12
-	Instruction3.TextXAlignment = Enum.TextXAlignment.Left
-	Instruction3.TextWrapped = true
-	Instruction3.Parent = Instructions
-
-	local Instruction4 = Instance.new("TextLabel")
-	Instruction4.Text = "4. テレポートボタンで実行"
-	Instruction4.Size = UDim2.new(1, -20, 0, 20)
-	Instruction4.Position = UDim2.new(0, 10, 0, 115)
-	Instruction4.BackgroundTransparency = 1
-	Instruction4.TextColor3 = Color3.fromRGB(200, 200, 200)
-	Instruction4.Font = Enum.Font.Gotham
-	Instruction4.TextSize = 12
-	Instruction4.TextXAlignment = Enum.TextXAlignment.Left
-	Instruction4.TextWrapped = true
-	Instruction4.Parent = Instructions
-
-	local Note = Instance.new("TextLabel")
-	Note.Text = "※ テレポートはプレイヤーを中心とした円形ランダム位置です"
-	Note.Size = UDim2.new(1, -20, 0, 30)
-	Note.Position = UDim2.new(0, 10, 0, 140)
-	Note.BackgroundTransparency = 1
-	Note.TextColor3 = Color3.fromRGB(180, 180, 180)
-	Note.Font = Enum.Font.Gotham
-	Note.TextSize = 11
-	Note.TextXAlignment = Enum.TextXAlignment.Left
-	Note.TextWrapped = true
-	Note.Parent = Instructions
-
+	
+	local ApplyCorner = Instance.new("UICorner")
+	ApplyCorner.CornerRadius = UDim.new(0, 6)
+	ApplyCorner.Parent = ApplyButton
+	
+	-- UIを最前面に
+	ScreenGui.DisplayOrder = 10
+	ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+	
 	return ScreenGui, {
 		MainFrame = MainFrame,
 		TitleBar = TitleBar,
 		MinimizeButton = MinimizeButton,
 		SettingsButton = SettingsButton,
-		ContentScrollingFrame = ContentScrollingFrame,
 		TeleportButton = TeleportButton,
-		RadiusSliderFrame = RadiusSliderFrame,
-		RadiusFill = RadiusFill,
-		RadiusButton = RadiusButton,
+		RadiusSlider = RadiusSlider,
 		RadiusValue = RadiusValue,
 		SettingsFrame = SettingsFrame,
 		CloseSettings = CloseSettings,
-		DelaySliderFrame = DelaySliderFrame,
-		DelayFill = DelayFill,
-		DelayButton = DelayButton,
+		DelaySlider = DelaySlider,
 		DelayValue = DelayValue,
-		InputBox = InputBox,
+		CustomDelay = CustomDelay,
+		CustomDelayInput = InputBox,
 		ApplyButton = ApplyButton
 	}
 end
 
--- UIの作成
-local ScreenGui, UI = CreateUI()
-ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+-- UIを作成
+local UI = CreateUI()
+local Elements = UI[2]
 
 -- 設定値
 local Settings = {
 	Radius = 7.5,
-	Delay = 0.5
+	Delay = 0.5,
+	IsTeleporting = false
 }
 
--- ドラッグ機能
+-- UIドラッグ機能
 local function MakeDraggable(frame, dragHandle)
 	local dragging = false
 	local dragInput, dragStart, startPos
@@ -575,7 +509,7 @@ local function MakeDraggable(frame, dragHandle)
 		if input.UserInputType == Enum.UserInputType.MouseMovement then
 			dragInput = input
 		end
-	end
+	end)
 	
 	UserInputService.InputChanged:Connect(function(input)
 		if dragging and input == dragInput then
@@ -584,20 +518,24 @@ local function MakeDraggable(frame, dragHandle)
 	end)
 end
 
--- スライダー機能
-local function SetupSlider(sliderFrame, fill, button, valueLabel, min, max, defaultValue, callback)
+-- スライダー作成関数
+local function SetupSlider(sliderFrame, valueLabel, min, max, defaultValue, callback)
+	local slider = sliderFrame
+	local fill = slider:FindFirstChild("Fill")
+	local button = slider:FindFirstChild("Button")
+	
 	local isDragging = false
 	
+	-- 値の更新関数
 	local function UpdateValue(value)
 		value = math.clamp(value, min, max)
 		local percent = (value - min) / (max - min)
 		
-		-- UIの更新
+		-- UI更新
 		fill.Size = UDim2.new(percent, 0, 1, 0)
-		button.Position = UDim2.new(percent, -10, 0, 0)
 		valueLabel.Text = string.format("%.2f", value)
 		
-		-- コールバックの実行
+		-- コールバック実行
 		if callback then
 			callback(value)
 		end
@@ -605,10 +543,10 @@ local function SetupSlider(sliderFrame, fill, button, valueLabel, min, max, defa
 		return value
 	end
 	
-	-- 初期値の設定
+	-- 初期値設定
 	UpdateValue(defaultValue)
 	
-	-- マウス操作
+	-- ドラッグ機能
 	button.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			isDragging = true
@@ -621,10 +559,10 @@ local function SetupSlider(sliderFrame, fill, button, valueLabel, min, max, defa
 		end
 	end)
 	
-	sliderFrame.InputBegan:Connect(function(input)
+	slider.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			isDragging = true
-			local percent = (input.Position.X - sliderFrame.AbsolutePosition.X) / sliderFrame.AbsoluteSize.X
+			local percent = (input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X
 			local value = min + (percent * (max - min))
 			UpdateValue(value)
 		end
@@ -632,7 +570,7 @@ local function SetupSlider(sliderFrame, fill, button, valueLabel, min, max, defa
 	
 	UserInputService.InputChanged:Connect(function(input)
 		if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			local percent = (input.Position.X - sliderFrame.AbsolutePosition.X) / sliderFrame.AbsoluteSize.X
+			local percent = (input.Position.X - slider.AbsolutePosition.X) / slider.AbsoluteSize.X
 			local value = min + (percent * (max - min))
 			UpdateValue(value)
 		end
@@ -644,16 +582,37 @@ local function SetupSlider(sliderFrame, fill, button, valueLabel, min, max, defa
 	}
 end
 
--- テレポート関数
+-- メインテレポート関数（クライアント側で動作）
 local function TeleportPlayer(radius, delayTime)
-	-- キャラクターの取得
-	local Character = Player.Character
-	if not Character then return false end
+	if Settings.IsTeleporting then
+		return false
+	end
 	
-	local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-	if not HumanoidRootPart then return false end
+	if not Character then
+		Character = Player.Character
+		if not Character then
+			warn("キャラクターが見つかりません")
+			return false
+		end
+	end
 	
-	-- 遅延の適用
+	local humanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+	if not humanoidRootPart then
+		warn("HumanoidRootPartが見つかりません")
+		return false
+	end
+	
+	Settings.IsTeleporting = true
+	
+	-- サーバーに通知（オプション）
+	TeleportEvent:FireServer("TeleportStarted", {
+		Player = Player.Name,
+		Radius = radius,
+		Delay = delayTime,
+		Position = humanoidRootPart.Position
+	})
+	
+	-- 遅延がある場合は待機
 	if delayTime and delayTime > 0 then
 		task.wait(delayTime)
 	end
@@ -666,17 +625,16 @@ local function TeleportPlayer(radius, delayTime)
 	local offsetZ = math.sin(randomAngle) * radius
 	
 	-- 現在位置からオフセットを加算
-	local currentPosition = HumanoidRootPart.Position
+	local currentPosition = humanoidRootPart.Position
 	local newPosition = Vector3.new(
 		currentPosition.X + offsetX,
-		currentPosition.Y, -- Y軸は変更しない
+		currentPosition.Y, -- Yは変更しない（高さを維持）
 		currentPosition.Z + offsetZ
 	)
 	
-	-- 地面検出のためのRaycast
-	local rayOrigin = Vector3.new(newPosition.X, currentPosition.Y + 10, newPosition.Z)
-	local rayDirection = Vector3.new(0, -20, 0)
-	
+	-- 地面検出のためにRaycast
+	local rayOrigin = Vector3.new(newPosition.X, currentPosition.Y + 5, newPosition.Z)
+	local rayDirection = Vector3.new(0, -10, 0)
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 	raycastParams.FilterDescendantsInstances = {Character}
@@ -689,109 +647,129 @@ local function TeleportPlayer(radius, delayTime)
 			raycastResult.Position.Y + 3, -- 地面から少し上
 			newPosition.Z
 		)
-	else
-		-- Raycastが失敗した場合はYを維持
-		newPosition = Vector3.new(newPosition.X, currentPosition.Y, newPosition.Z)
 	end
 	
-	-- テレポートの実行
-	HumanoidRootPart.CFrame = CFrame.new(newPosition)
+	-- テレポート実行
+	humanoidRootPart.CFrame = CFrame.new(newPosition)
 	
+	-- サーバーに通知（オプション）
+	TeleportEvent:FireServer("TeleportCompleted", {
+		Player = Player.Name,
+		Radius = radius,
+		Delay = delayTime,
+		FromPosition = currentPosition,
+		ToPosition = newPosition
+	})
+	
+	-- デバッグ用に円形のビジュアルを作成（オプション）
+	if false then -- 必要に応じてtrueに変更
+		local visualize = Instance.new("Part")
+		visualize.Shape = Enum.PartType.Ball
+		visualize.Size = Vector3.new(2, 2, 2)
+		visualize.Position = newPosition
+		visualize.Anchored = true
+		visualize.CanCollide = false
+		visualize.Transparency = 0.5
+		visualize.BrickColor = BrickColor.new("Bright green")
+		visualize.Parent = workspace
+		
+		game:GetService("Debris"):AddItem(visualize, 5)
+	end
+	
+	Settings.IsTeleporting = false
 	return true
 end
 
--- UIの初期化
-MakeDraggable(UI.MainFrame, UI.TitleBar)
+-- UI初期化
+MakeDraggable(Elements.MainFrame, Elements.TitleBar)
 
--- 半径スライダーの設定
-local radiusControl = SetupSlider(
-	UI.RadiusSliderFrame,
-	UI.RadiusFill,
-	UI.RadiusButton,
-	UI.RadiusValue,
-	5, 10, 7.5,
-	function(value)
-		Settings.Radius = value
-	end
-)
+-- スライダー設定
+local radiusControl = SetupSlider(Elements.RadiusSlider, Elements.RadiusValue, 5, 10, 7.5, function(value)
+	Settings.Radius = value
+end)
 
--- 遅延スライダーの設定
-local delayControl = SetupSlider(
-	UI.DelaySliderFrame,
-	UI.DelayFill,
-	UI.DelayButton,
-	UI.DelayValue,
-	0.1, 1, 0.5,
-	function(value)
-		Settings.Delay = value
-	end
-)
+local delayControl = SetupSlider(Elements.DelaySlider, Elements.DelayValue, 0.1, 1, 0.5, function(value)
+	Settings.Delay = value
+end)
 
--- テレポートボタンのイベント
-UI.TeleportButton.MouseButton1Click:Connect(function()
-	UI.TeleportButton.Text = "テレポート中..."
-	UI.TeleportButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+-- テレポートボタン
+Elements.TeleportButton.MouseButton1Click:Connect(function()
+	-- ボタンの視覚的フィードバック
+	Elements.TeleportButton.Text = "テレポート中..."
+	Elements.TeleportButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
 	
-	-- テレポートの実行
+	-- テレポート実行
 	local success = TeleportPlayer(Settings.Radius, Settings.Delay)
 	
+	-- 結果に応じたフィードバック
 	if success then
-		print("テレポート成功！ 半径: " .. Settings.Radius .. ", 遅延: " .. Settings.Delay)
+		Elements.TeleportButton.Text = "成功!"
+		Elements.TeleportButton.BackgroundColor3 = Color3.fromRGB(60, 160, 60)
+		task.wait(0.5)
 	else
-		warn("テレポートに失敗しました")
+		Elements.TeleportButton.Text = "失敗"
+		Elements.TeleportButton.BackgroundColor3 = Color3.fromRGB(160, 60, 60)
+		task.wait(0.5)
 	end
 	
-	task.wait(0.5)
-	
-	UI.TeleportButton.Text = "テレポート!"
-	UI.TeleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	Elements.TeleportButton.Text = "テレポート!"
+	Elements.TeleportButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 end)
 
 -- 最小化ボタン
 local isMinimized = false
-UI.MinimizeButton.MouseButton1Click:Connect(function()
+Elements.MinimizeButton.MouseButton1Click:Connect(function()
 	isMinimized = not isMinimized
 	
 	if isMinimized then
-		UI.MainFrame.Size = UDim2.new(0, 300, 0, 40)
-		UI.MinimizeButton.Text = "+"
+		Elements.MainFrame.Size = UDim2.new(0, 300, 0, 40)
+		Elements.MinimizeButton.Text = "+"
 	else
-		UI.MainFrame.Size = UDim2.new(0, 300, 0, 200)
-		UI.MinimizeButton.Text = "-"
+		Elements.MainFrame.Size = UDim2.new(0, 300, 0, 200)
+		Elements.MinimizeButton.Text = "-"
 	end
 end)
 
 -- 設定ボタン
-UI.SettingsButton.MouseButton1Click:Connect(function()
-	UI.SettingsFrame.Visible = true
+Elements.SettingsButton.MouseButton1Click:Connect(function()
+	Elements.SettingsFrame.Visible = true
 end)
 
 -- 設定を閉じる
-UI.CloseSettings.MouseButton1Click:Connect(function()
-	UI.SettingsFrame.Visible = false
+Elements.CloseSettings.MouseButton1Click:Connect(function()
+	Elements.SettingsFrame.Visible = false
 end)
 
--- カスタム遅延時間の適用
-UI.ApplyButton.MouseButton1Click:Connect(function()
-	local inputText = UI.InputBox.Text
+-- カスタム遅延時間入力
+Elements.ApplyButton.MouseButton1Click:Connect(function()
+	local inputText = Elements.CustomDelayInput.Text
 	local delayTime = tonumber(inputText)
 	
 	if delayTime then
 		delayTime = math.clamp(delayTime, 0.01, 10)
 		delayControl.Update(delayTime)
-		UI.InputBox.Text = ""
+		Elements.CustomDelayInput.Text = ""
+		
+		print("カスタム遅延時間を " .. delayTime .. " 秒に設定しました")
 	end
 end)
 
 -- エンターキーでも適用
-UI.InputBox.FocusLost:Connect(function(enterPressed)
+Elements.CustomDelayInput.FocusLost:Connect(function(enterPressed)
 	if enterPressed then
-		UI.ApplyButton:Activate()
+		Elements.ApplyButton:Activate()
 	end
 end)
 
--- キャラクターの変更に対応
-Player.CharacterAdded:Connect(function(character)
-	Character = character
-	HumanoidRootPart = character:WaitForChild("HumanoidRootPart")
+-- キーバインド（オプション：例：Tキーでテレポート）
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	
+	if input.KeyCode == Enum.KeyCode.T then
+		-- Tキーでテレポート
+		Elements.TeleportButton:Activate()
+	end
 end)
+
+print("360° ランダムテレポートUIが読み込まれました！")
+print("半径: " .. Settings.Radius .. " スタッド, 遅延: " .. Settings.Delay .. " 秒")
