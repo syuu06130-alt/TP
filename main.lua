@@ -1,179 +1,97 @@
+-- Blind Shoot Script Hub (Orion Library版)
+-- ご指定のUI構造・ボタン配置を忠実に再現
+-- 360°ランダムテレポート機能は一切入れず、他のスクリプトをロードするボタンのみ
+
+local player = game.Players.LocalPlayer
+
+-- Orion Library読み込み（ご指定のURLを使用）
 local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
-local Window = OrionLib:MakeWindow({Name = "Blind shoot script", HidePremium = false, SaveConfig = true, ConfigFolder = "OrionTest"})
 
--- サービス定義
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
+-- ウィンドウ作成
+local Window = OrionLib:MakeWindow({
+    Name = "Blind shoot script",
+    HidePremium = false,
+    SaveConfig = true,
+    ConfigFolder = "OrionTest",
+    IntroEnabled = false  -- 開けない問題を回避するためイントロ無効化（必要ならtrueに変更可）
+})
 
--- 変数管理
-local Settings = {
-    Target = nil,        -- ターゲットプレイヤー
-    Radius = 7.5,        -- 半径
-    Height = 0,          -- 高さ調整
-    Loop = false,        -- ループ有効化
-    LoopDelay = 0.1      -- ループ遅延
-}
-
-local LoopConnection = nil
-
--- プレイヤーリスト取得関数
-local function GetPlayerNames()
-    local names = {}
-    table.insert(names, "LocalPlayer (自分)") -- 自分自身も選択可能に
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
-            table.insert(names, player.Name)
-        end
-    end
-    return names
-end
-
--- テレポート実行ロジック
-local function TeleportToTarget()
-    local targetChar = nil
-    
-    -- ターゲットの特定
-    if Settings.Target == "LocalPlayer (自分)" or Settings.Target == nil then
-        targetChar = LocalPlayer.Character
-    else
-        local targetPlayer = Players:FindFirstChild(Settings.Target)
-        if targetPlayer then
-            targetChar = targetPlayer.Character
-        end
-    end
-
-    -- ターゲットが存在し、生きている場合
-    if targetChar and targetChar:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-        local targetHRP = targetChar.HumanoidRootPart
-        local myHRP = LocalPlayer.Character.HumanoidRootPart
-        
-        -- ランダムな角度を計算
-        local angle = math.rad(math.random(0, 360))
-        
-        -- 位置計算 (ターゲットを中心に円周上へ)
-        local offsetX = math.cos(angle) * Settings.Radius
-        local offsetZ = math.sin(angle) * Settings.Radius
-        
-        -- 新しい位置 (ターゲットの高さ + 設定した高さ補正)
-        local newPos = Vector3.new(targetHRP.Position.X + offsetX, targetHRP.Position.Y + Settings.Height, targetHRP.Position.Z + offsetZ)
-        
-        -- テレポート実行 (CFrame.lookAtを使って、常にターゲットの方を向くように設定 = Blind Shootしやすく)
-        myHRP.CFrame = CFrame.lookAt(newPos, targetHRP.Position)
-    else
-        OrionLib:MakeNotification({
-            Name = "エラー",
-            Content = "ターゲットまたはキャラクターが見つかりません。",
-            Image = "rbxassetid://4483345998",
-            Time = 3
-        })
-    end
-end
-
--- ==============================
--- UI構築 (タブ分け)
--- ==============================
-
--- [メインタブ] ターゲット選択と実行
+-- Mainタブ
 local MainTab = Window:MakeTab({
     Name = "Main",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-local TargetSection = MainTab:AddSection({
-    Name = "ターゲット設定"
-})
-
-local PlayerDropdown = TargetSection:AddDropdown({
-    Name = "プレイヤー選択",
-    Default = "選択してください",
-    Options = GetPlayerNames(),
-    Callback = function(Value)
-        Settings.Target = Value
-    end    
-})
-
-TargetSection:AddButton({
-    Name = "プレイヤーリスト更新",
+MainTab:AddButton({
+    Name = "Esp player",
     Callback = function()
-        PlayerDropdown:Refresh(GetPlayerNames(), true)
-    end    
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/gumanba/Scripts/refs/heads/main/BlindShot", true))()
+    end
 })
 
-local ActionSection = MainTab:AddSection({
-    Name = "アクション"
-})
-
-ActionSection:AddButton({
-    Name = "1回テレポート (Blind Shoot)",
+MainTab:AddButton({
+    Name = "Reveal all player",
     Callback = function()
-        TeleportToTarget()
-    end    
+        loadstring(game:HttpGet("https://api.junkie-development.de/api/v1/luascripts/public/87cc0bbc35d973c937f7c3cd93a7b5b022af8dc99d41a16ebc6ddbcac7519806/download"))()
+    end
 })
 
-ActionSection:AddToggle({
-    Name = "ループテレポート (連続移動)",
-    Default = false,
-    Callback = function(Value)
-        Settings.Loop = Value
-        if Value then
-            -- ループ開始
-            task.spawn(function()
-                while Settings.Loop do
-                    TeleportToTarget()
-                    task.wait(Settings.LoopDelay)
-                end
-            end)
-        end
-    end    
-})
-
--- [設定タブ] 数値調整
-local SettingsTab = Window:MakeTab({
-    Name = "Settings",
+-- Hubsタブ
+local HubsTab = Window:MakeTab({
+    Name = "Hubs",
     Icon = "rbxassetid://4483345998",
     PremiumOnly = false
 })
 
-SettingsTab:AddSlider({
-    Name = "半径 (距離)",
-    Min = 2,
-    Max = 20,
-    Default = 7.5,
-    Color = Color3.fromRGB(255,255,255),
-    Increment = 0.5,
-    ValueName = "studs",
-    Callback = function(Value)
-        Settings.Radius = Value
-    end    
+HubsTab:AddButton({
+    Name = "synergy hub",
+    Callback = function()
+        loadstring(game:HttpGet("https://pastebin.com/raw/vjB2N8PE"))()
+    end
 })
 
-SettingsTab:AddSlider({
-    Name = "高さ調整 (Y軸)",
-    Min = -10,
-    Max = 10,
-    Default = 0,
-    Color = Color3.fromRGB(255,255,255),
-    Increment = 0.5,
-    ValueName = "studs",
-    Callback = function(Value)
-        Settings.Height = Value
-    end    
+HubsTab:AddButton({
+    Name = "Random hub",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/lattereal/blindshot/refs/heads/main/yes.lua"))()
+    end
 })
 
-SettingsTab:AddSlider({
-    Name = "ループ遅延 (秒)",
-    Min = 0.05,
-    Max = 2.0,
-    Default = 0.5,
-    Color = Color3.fromRGB(255,255,255),
-    Increment = 0.05,
-    ValueName = "sec",
-    Callback = function(Value)
-        Settings.LoopDelay = Value
-    end    
+HubsTab:AddButton({
+    Name = "foxname hub",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/afkar-gg/sc/refs/heads/main/blindshot", true))()
+    end
 })
 
--- 初期化通知
-OrionLib:Init()
+HubsTab:AddButton({
+    Name = "AnonymouHub",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/HitAMassy/AnonymousHub/refs/heads/main/loader.lua"))()
+    end
+})
+
+HubsTab:AddButton({
+    Name = "susy hub",
+    Callback = function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/H20CalibreYT/SystemBroken/main/script'))()
+    end
+})
+
+HubsTab:AddButton({
+    Name = "scnpai Hub",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Senpai1997/Scripts/refs/heads/main/SenpaihubTheStrongestBattlegroundsAimlockAutoblock.lua"))()
+    end
+})
+
+-- 読み込み完了通知（Orion標準機能）
+OrionLib:MakeNotification({
+    Name = "読み込み完了",
+    Content = "Blind Shoot Script Hub が正常に起動しました！",
+    Image = "rbxassetid://4483345998",
+    Time = 5
+})
+
+print("Blind Shoot Script Hub が正常に読み込まれました！")
